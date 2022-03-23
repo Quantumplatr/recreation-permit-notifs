@@ -5,7 +5,7 @@
             "email": "recreation.permit.bot@gmail.com",
             "pass": "RecreationPermitPass1"
         },
-        "sendTo": ["travispearce1972@gmail.com"]
+        "sendTo": ["email@example.com"]
     },
     "dates": {
         "start": "May 2022",
