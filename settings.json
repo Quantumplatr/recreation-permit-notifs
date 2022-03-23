@@ -1,0 +1,42 @@
+{
+    "show-browser":true,
+    "emails": {
+        "sendFrom": {
+            "email": "FILLER",
+            "pass": "FILLER"
+        },
+        "sendTo": ["travispearce1972@gmail.com"]
+    },
+    "dates": {
+        "start": "May 2022",
+        "end": "September 2022"
+    },
+    "run-every": 10,
+    "run-once": true,
+    "wait-for-load": 2,
+    "permits": [{
+        "id": 234622,
+        "segments": [],
+        "num-people": -1
+    }, {
+        "id": 250014,
+        "segments": ["Deerlodge Park, Yampa River", "Gates of Lodore, Green River"],
+        "num-people": -1
+    }, {
+        "id": 250986,
+        "segments": ["Sand Island to Clay Hills", "Mexican Hat to Clay Hills"],
+        "num-people": 10
+    }, {
+        "id": 234623,
+        "segments": [],
+        "num-people": -1
+    }, {
+        "id": 234624,
+        "segments": [],
+        "num-people": -1
+    }, {
+        "id": 234625,
+        "segments": [],
+        "num-people": -1
+    }]
+}
