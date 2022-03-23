@@ -8,17 +8,23 @@ from selenium.common.exceptions import NoSuchElementException
 import json
 import time
 import sched
+import smtplib
 
 
 schedule = None
 appSettings = None
-permitAvailability = None
+permitAvail = {}
 
 def main():
-    """TODO comment""" # TODO comment
+    """
+    Gets information from files and begins scheduling permit checks.
+    Runs a permit check immediately.
+    """
     global appSettings
     global schedule
+    global permitAvail
 
+    # Get settings
     try:
         with open("settings.json", "r") as settingsFile:
             appSettings = json.load(settingsFile)
@@ -26,6 +32,14 @@ def main():
         print(f"ERROR: Failed to load settings with error: {err}")
         print("NOTICE: Make sure that settings.json exists and is properly formatted.")
         quit(1)
+
+    # Get previous availability
+    try:
+        with open("permitAvail.json", "r") as permitAvailFile:
+            permitAvail = json.load(permitAvailFile)
+    except Exception as err:
+        print(f"ERROR: Failed to load previously found permits with error: {err}")
+        print("NOTICE: Assuming no permits previously found.")
 
     # Validate appSettings
     validate_app_settings()
@@ -36,7 +50,9 @@ def main():
     schedule.run()
 
 def validate_app_settings():
-    """TODO comment""" # TODO comment
+    """
+    Validates that settings.json had the approriate information.
+    """
     global appSettings
     
     # Default "show-browser" to False
@@ -80,18 +96,34 @@ def validate_app_settings():
     # TODO check emails
 
 def schedule_checking(runNow = False):
-    """TODO comment""" # TODO comment
+    """
+    Schedules a task to check for permits.
+    If the given parameter is true, the task is run immediately.
+    Else, it is run in "run-every" seconds defined in settings.json.
+    """
     global appSettings
     global schedule
 
     try:
         runIn = 0 if runNow else appSettings["run-every"]
-        schedule.enter(runIn, 1, check_for_permits)
+        schedule.enter(runIn, 1, safe_check_for_permits)
     except Exception as err:
         print(f"ERROR: Failed to schedule permit checking with error {err}")
 
+def safe_check_for_permits():
+    """
+    Wraps check_for_permits() call in a try catch to make sure the program doesn't crash.
+    """
+
+    try:
+        check_for_permits()
+    except Exception as err:
+        print(f"ERROR: Error checking for permits ({err})")
+
 def check_for_permits():
-    """TODO comment""" # TODO comment
+    """
+    Scrapes the appropriate recreation.gov sites to find permit availability.
+    """
     global appSettings
 
     # Set browser options
@@ -101,8 +133,6 @@ def check_for_permits():
         options.add_argument("--headless")
 
     options.add_argument("--window-size=1920x1080")
-    # options.add_experimental_option("detach", True)
-
 
     # Open Browser
     driver = webdriver.Chrome(options=options)
@@ -114,16 +144,25 @@ def check_for_permits():
     startMonth, startYear = appSettings["dates"]["start"].lower().split(" ")
     endMonth, endYear = appSettings["dates"]["end"].lower().split(" ")
 
-    # startYear = int(startYear)
-    # endYear = int(endYear)
+    print("PERMITS: Starting Search for Permit Availability")
 
+    # Check all permits
     for permitToCheck in permitsToCheck:
 
         permitID = permitToCheck["id"]
 
-        driver.get(f"https://www.recreation.gov/permits/{permitID}")
+        url = f"https://www.recreation.gov/permits/{permitID}"
+        driver.get(url)
+        foundPermitAvail[permitID] = {
+            "url": url
+        }
 
-        # TODO check for segments
+        # Get permit name
+        name = driver.find_element(By.XPATH, '//*[@id="page-content"]/div/div[2]/div/div/div[1]/div[1]/h1').text
+        foundPermitAvail[permitID]["name"] = name
+        print(f'PERMITS:\tSearching for "{name}" permits')
+
+        # Check for segment input
         segmentInput = None
         try:
             segmentInput = Select(driver.find_element(By.ID, "division-selection"))
@@ -133,13 +172,12 @@ def check_for_permits():
 
         # Select 
         for segment in permitToCheck["segments"]:
+            print(f'PERMITS:\t\tSearching for "{name}" -> "{segment}" permits')
             
             # Select segment and set num people
             if segmentInput != None:
                 # Select segment
                 segmentInput.select_by_visible_text(segment)
-
-                time.sleep(1) # TODO delete me
 
                 # Input people
                 numPeopleInput = None
@@ -152,29 +190,37 @@ def check_for_permits():
                     pass
 
             permitAvail = get_availability(driver, startMonth, startYear, endMonth, endYear)
-            print(f'availability for {permitID} -> {segment}')
-            print(permitAvail)
+            
+            # Init segment list if needed
+            if not "segments" in foundPermitAvail[permitID]:
+                foundPermitAvail[permitID]["segments"] = {}
 
+            # Add segment avail to list
+            foundPermitAvail[permitID]["segments"][segment] = permitAvail
+
+            print(f'PERMITS:\t\tDone searching for "{name}" -> "{segment}" permits')
+
+        # Add permit avail
         if len(permitToCheck["segments"]) == 0:
             permitAvail = get_availability(driver, startMonth, startYear, endMonth, endYear)
 
-            print(f'availability for {permitID}')
-            print(permitAvail)
+            foundPermitAvail[permitID]["availability"] = permitAvail
+            
+        print(f'PERMITS:\tDone searching for "{name}" permits')
 
+    compare_availability(foundPermitAvail)
 
-        time.sleep(3)
-
-    # Check for permits
+    # Schedule another search for permits
     if not appSettings['run-once']:
         schedule_checking()
 
 
-    # TODO delete me
-    # driver.get_screenshot_as_file("capture.png")
-    # print("Hello World")
-
-
 def get_availability(driver, startMonth, startYear, endMonth, endYear):
+    """
+    Gets the availability off of the current page and returns in.
+    This changes the selected month to the starting one and then traverses to the end month.
+    """
+
     selectedMonthElem = driver.find_element(By.XPATH, '//*[@id="page-content"]/div/div[2]/div/div/div[2]/div[1]/div/div[2]/div/div/div/div[1]/div[2]/div[2]/div/div[2]/div/div/strong')
     selectedMonth, selectedYear = selectedMonthElem.text.lower().split(" ")
     
@@ -251,9 +297,150 @@ def get_availability(driver, startMonth, startYear, endMonth, endYear):
 
     return availability
 
-def notify_of_permits():
-    """TODO comment""" # TODO comment
+def compare_availability(foundPermitAvail):
+    """
+    Compares given permit availability with previously found permit
+    availability. If there is new availability, a notification email
+    is sent.
+    """
+    global permitAvail
     global appSettings
+
+    newAvail = {}
+
+    # Compare all permits
+    for permit in appSettings["permits"]:
+        foundAvail = foundPermitAvail[permit["id"]]
+
+        # First time finding permit
+        if not permit["id"] in permitAvail:
+            continue
+
+        oldAvail = permitAvail[permit["id"]]
+
+        # Compare segmented permit avail
+        if "segments" in foundAvail:
+            for segment in foundAvail["segments"]:
+
+                # First time finding segment
+                if not segment in oldAvail["segments"]:
+                    continue
+
+                # Go over each month
+                for month in foundAvail["segments"][segment]:
+
+                    # First time finding this month for this segment
+                    if not month in oldAvail["segments"][segment]:
+                        continue
+
+                    foundDaysAvail = foundAvail["segments"][segment][month]
+                    oldDaysAvail = oldAvail["segments"][segment][month]
+
+                    newDaysAvail = list(set(foundDaysAvail) - set(oldDaysAvail))
+
+                    # Store new availability
+                    if len(newDaysAvail) > 0:
+
+                        # Init permit if needed
+                        if not permit["id"] in newAvail:
+                            newAvail[permit["id"]] = {}
+
+                        # Init segments if needed
+                        if not "segments" in newAvail[permit["id"]]:
+                            newAvail[permit["id"]]["segments"] = {}
+
+                        # Init specific segment if needed
+                        if not segment in newAvail[permit["id"]]["segments"][segment]:
+                            newAvail[permit["id"]]["segments"][segment] = {}
+
+                        newAvail[permit["id"]]["segments"][segment][month] = newDaysAvail
+                        newAvail[permit["id"]]["name"] = foundAvail["name"]
+
+        # Compare permit avail
+        else:
+            for month in foundAvail["availability"]:
+
+                # First time finding this month for this permit
+                if not month in oldAvail["availability"]:
+                    continue
+
+                foundDaysAvail = foundAvail["availability"][month]
+                oldDaysAvail = oldAvail["availability"][month]
+
+                newDaysAvail = list(set(foundDaysAvail) - set(oldDaysAvail))
+                
+                # Store new availability
+                if len(newDaysAvail) > 0:
+
+                    # Init permit if needed
+                    if not permit["id"] in newAvail:
+                        newAvail[permit["id"]] = {}
+
+                    # Init segments if needed
+                    if not "availability" in newAvail[permit["id"]]:
+                        newAvail[permit["id"]]["availability"] = {}
+
+                    newAvail[permit["id"]]["availability"][month] = newDaysAvail
+                    newAvail[permit["id"]]["name"] = foundAvail["name"]
+
+    # Notify
+    if len(newAvail) > 0:
+        notify_of_permits(newAvail)
+
+    # Update
+    permitAvail = foundPermitAvail
+    with open("permitAvail.json", "w") as permitAvailFile:
+        json.dump(permitAvail, permitAvailFile)
+        
+
+def notify_of_permits(newAvail):
+    """Sends an email notifying of the new availabilities given in the parameter."""
+    global appSettings
+
+    print(f"IMPORTANT: New availability found!!!! {newAvail}")
+
+    # Format Email Body
+    emailBody = ""
+    for permitID in newAvail:
+        name = newAvail[permitID]["name"]
+
+        emailBody += f"{name}\n"
+
+        if "segments" in newAvail[permitID]:
+            for segment in newAvail[permitID]["segments"]:
+                emailBody += f"\t{segment}"
+
+                for month in newAvail[permitID]["segments"][segment]:    
+                    newDays = newAvail[permitID]["availability"][month]
+                    emailBody += f"\t\t{month}\n\t\t\t{newDays}\n"
+
+        else:
+            for month in newAvail[permitID]["availability"]:
+                
+                newDays = newAvail[permitID]["availability"][month]
+                emailBody += f"\t{month}\n\t\t{newDays}\n"
+
+    # Get emails
+    fromEmail = appSettings["emails"]["sendFrom"]["email"]
+    fromPass = appSettings["emails"]["sendFrom"]["pass"]
+    sendTo = appSettings["emails"]["sendTo"]
+
+    # Format email message
+    emailText = f"From: {fromEmail}\r\n"
+    emailText += f"To: {', '.join(sendTo)}\r\n"
+    emailText += f"Subject: RECREATION BOT: New permit availability found\r\n\r\n"
+    emailText += f"{emailBody}"
+
+    # Send email
+    try:
+        emailServer = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        emailServer.ehlo()
+        emailServer.login(fromEmail, fromPass)
+        emailServer.sendmail(fromEmail, sendTo, emailText)
+        emailServer.close()
+        print("NOTIF: Email sent")
+    except Exception as err:
+        print("ERROR: Error sending email ({err})")
 
 
 if __name__ == "__main__":
