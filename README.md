@@ -90,7 +90,7 @@ Below is the default settings:
 ```
 
 Below is the description of these settings. 
-**NOTE: the format of these fields is important and the program may not work if they are formatted properly.**
+**NOTE: the format of these fields is important and the program may not work if they are formatted improperly.**
 
 - `show-browser`
   - If `true`, will open an instance of Google Chrome to run the web scraping. This may run a bit faster due to Chrome's security features.
