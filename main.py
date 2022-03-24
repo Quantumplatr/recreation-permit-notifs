@@ -355,6 +355,7 @@ def compare_availability(foundPermitAvail):
 
                         newAvail[permit["id"]]["segments"][segment][month] = newDaysAvail
                         newAvail[permit["id"]]["name"] = foundAvail["name"]
+                        newAvail[permit["id"]]["url"] = foundAvail["url"]
 
         # Compare permit avail
         else:
@@ -382,6 +383,7 @@ def compare_availability(foundPermitAvail):
 
                     newAvail[permit["id"]]["availability"][month] = newDaysAvail
                     newAvail[permit["id"]]["name"] = foundAvail["name"]
+                    newAvail[permit["id"]]["url"] = foundAvail["url"]
 
     # Notify
     if len(newAvail) > 0:
@@ -404,7 +406,7 @@ def notify_of_permits(newAvail):
     for permitID in newAvail:
         name = newAvail[permitID]["name"]
 
-        emailBody += f"{name}\n"
+        emailBody += f"{name} ({newAvail[permitID]['url']})\n"
 
         if "segments" in newAvail[permitID]:
             for segment in newAvail[permitID]["segments"]:
