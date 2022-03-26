@@ -1,18 +1,18 @@
 {
-    "show-browser":true,
+    "show-browser":false,
     "emails": {
         "sendFrom": {
             "email": "recreation.permit.bot@gmail.com",
             "pass": "RecreationPermitPass1"
         },
-        "sendTo": ["etc@unknownstudio.com"]
+        "sendTo": ["example@example.com"]
     },
     "dates": {
         "start": "May 2022",
         "end": "September 2022"
     },
     "run-every": 60,
-    "run-once": true,
+    "run-once": false,
     "wait-for-load": 2,
     "permits": [{
         "id": "234622",
