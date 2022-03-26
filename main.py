@@ -119,6 +119,11 @@ def safe_check_for_permits():
         check_for_permits()
     except Exception as err:
         print(f"ERROR: Error checking for permits ({err})")
+        
+        # Send email with error message
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        errorEmailBody = f"There was an error checking for permits at {timestamp}. The error message given is: {err}.\n\n"
+        send_email("RECREATION BOT: Error checking for permits", errorEmailBody)
 
 def check_for_permits():
     """
@@ -144,7 +149,8 @@ def check_for_permits():
     startMonth, startYear = appSettings["dates"]["start"].lower().split(" ")
     endMonth, endYear = appSettings["dates"]["end"].lower().split(" ")
 
-    print("PERMITS: Starting Search for Permit Availability")
+    # Print that the search is starting with a timestamp
+    print(f"\n\n----- {time.strftime('%Y-%m-%d %H:%M:%S')}: STARTING SEARCH FOR PERMIT AVAILABILITY -----")
 
     # Check all permits
     for permitToCheck in permitsToCheck:
@@ -422,18 +428,28 @@ def notify_of_permits(newAvail):
                 newDays = newAvail[permitID]["availability"][month]
                 emailBody += f"\t{month}\n\t\t{newDays}\n"
 
+
+    # Send email
+    send_email("RECREATION BOT: New permit availability found", emailBody)
+
+
+# Send an email with the given subject and body.
+# The email is sent to/from the email(s) specified in the appSettings.
+def send_email(subject, body):
+    """Sends an email with the given message."""
+    global appSettings
+
     # Get emails
     fromEmail = appSettings["emails"]["sendFrom"]["email"]
     fromPass = appSettings["emails"]["sendFrom"]["pass"]
     sendTo = appSettings["emails"]["sendTo"]
-
+    
     # Format email message
     emailText = f"From: {fromEmail}\r\n"
     emailText += f"To: {', '.join(sendTo)}\r\n"
-    emailText += f"Subject: RECREATION BOT: New permit availability found\r\n\r\n"
-    emailText += f"{emailBody}"
+    emailText += f"Subject: {subject}\r\n\r\n"
+    emailText += f"{body}"
 
-    # Send email
     try:
         emailServer = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         emailServer.ehlo()
@@ -443,7 +459,6 @@ def notify_of_permits(newAvail):
         print("NOTIF: Email sent")
     except Exception as err:
         print("ERROR: Error sending email ({err})")
-
 
 if __name__ == "__main__":
     main()
