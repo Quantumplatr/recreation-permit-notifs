@@ -3,15 +3,17 @@
     "emails": {
         "sendFrom": {
             "email": "recreation.permit.bot@gmail.com",
-            "pass": "RecreationPermitPass1"
+            "pass": "RecreationPermitPass1",
+            "appPass": "xqbdrqlcfexlafst"
         },
-        "sendTo": ["example@example.com"]
+        "sendTo": ["travispearce1972@gmail.com","etc@unknownstudio.com"],
+        "sendErrorsTo": ["travispearce1972@gmail.com","etc@unknownstudio.com"]
     },
     "dates": {
         "start": "May 2022",
         "end": "September 2022"
     },
-    "run-every": 60,
+    "run-every": 10,
     "run-once": false,
     "wait-for-load": 2,
     "permits": [{

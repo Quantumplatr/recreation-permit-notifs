@@ -24,6 +24,7 @@ def main():
     global schedule
     global permitAvail
 
+
     # Get settings
     try:
         with open("settings.json", "r") as settingsFile:
@@ -121,9 +122,16 @@ def safe_check_for_permits():
         print(f"ERROR: Error checking for permits ({err})")
         
         # Send email with error message
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        errorEmailBody = f"There was an error checking for permits at {timestamp}. The error message given is: {err}.\n\n"
-        send_email("RECREATION BOT: Error checking for permits", errorEmailBody)
+        try:
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            errorEmailBody = f"There was an error checking for permits at {timestamp}. The error message given is: {err}.\n\n"
+            send_email("RECREATION BOT: Error checking for permits", errorEmailBody, True)
+        except:
+            print("ERROR: Failed to send error email.")
+            
+        # Schedule another search for permits
+        if not appSettings['run-once']:
+            schedule_checking()
 
 def check_for_permits():
     """
@@ -189,9 +197,11 @@ def check_for_permits():
                 numPeopleInput = None
                 try:
                     numPeopleInput = driver.find_element(By.ID, "number-input-")
-                    numPeopleInput.clear()
-                    numPeopleInput.send_keys(permitToCheck["num-people"])
-                    numPeopleInput.send_keys(Keys.RETURN)
+                    # Ensure that the input has the right number of people
+                    while not numPeopleInput.get_attribute('value') == str(permitToCheck["num-people"]):
+                        numPeopleInput.clear()
+                        numPeopleInput.send_keys(permitToCheck["num-people"])
+                        numPeopleInput.send_keys(Keys.RETURN)
                 except NoSuchElementException as err:
                     pass
 
@@ -356,7 +366,7 @@ def compare_availability(foundPermitAvail):
                             newAvail[permit["id"]]["segments"] = {}
 
                         # Init specific segment if needed
-                        if not segment in newAvail[permit["id"]]["segments"][segment]:
+                        if not segment in newAvail[permit["id"]]["segments"]:
                             newAvail[permit["id"]]["segments"][segment] = {}
 
                         newAvail[permit["id"]]["segments"][segment][month] = newDaysAvail
@@ -399,6 +409,7 @@ def compare_availability(foundPermitAvail):
     permitAvail = foundPermitAvail
     with open("permitAvail.json", "w") as permitAvailFile:
         json.dump(permitAvail, permitAvailFile)
+        print("FILES: Updated permitAvail.json")
         
 
 def notify_of_permits(newAvail):
@@ -416,10 +427,10 @@ def notify_of_permits(newAvail):
 
         if "segments" in newAvail[permitID]:
             for segment in newAvail[permitID]["segments"]:
-                emailBody += f"\t{segment}"
+                emailBody += f"\t{segment}\n"
 
                 for month in newAvail[permitID]["segments"][segment]:    
-                    newDays = newAvail[permitID]["availability"][month]
+                    newDays = newAvail[permitID]["segments"][segment][month]
                     emailBody += f"\t\t{month}\n\t\t\t{newDays}\n"
 
         else:
@@ -435,14 +446,17 @@ def notify_of_permits(newAvail):
 
 # Send an email with the given subject and body.
 # The email is sent to/from the email(s) specified in the appSettings.
-def send_email(subject, body):
+def send_email(subject, body, isError = False):
     """Sends an email with the given message."""
     global appSettings
 
     # Get emails
     fromEmail = appSettings["emails"]["sendFrom"]["email"]
-    fromPass = appSettings["emails"]["sendFrom"]["pass"]
+    fromPass = appSettings["emails"]["sendFrom"]["appPass"]
     sendTo = appSettings["emails"]["sendTo"]
+
+    if isError:
+        sendTo = appSettings["emails"]["sendErrorsTo"]
     
     # Format email message
     emailText = f"From: {fromEmail}\r\n"
