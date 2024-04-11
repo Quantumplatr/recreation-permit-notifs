@@ -57,27 +57,27 @@ def validate_app_settings():
     global appSettings
     
     # Default "show-browser" to False
-    if not "show-browser" in appSettings:
+    if "show-browser" not in appSettings:
         print('NOTICE: No "show-browser" field in settings.json. Using false as a default.')
         appSettings["show-browser"] = False
 
     # Default "run-once" to False
-    if not "run-once" in appSettings:
+    if "run-once" not in appSettings:
         print('NOTICE: No "run-once" field in settings.json. Using true as a default.')
         appSettings["run-once"] = False
 
     # Default "run-every" to 15 minutes
-    if not "run-every" in appSettings:
+    if "run-every" not in appSettings:
         print('NOTICE: No "run-every" field in settings.json. Using 15 (minutes) as a default.')
         appSettings["run-every"] = 15 * 60
 
     # Default "wait-for-load" to 2 seconds
-    if not "wait-for-load" in appSettings:
+    if "wait-for-load" not in appSettings:
         print('NOTICE: No "wait-for-load" field in settings.json. Using 2 (seconds) as a default.')
         appSettings["wait-for-load"] = 2
 
     # Handle no permits
-    if not "permits" in appSettings:
+    if "permits" not in appSettings:
         print('NOTICE: No "permits" field in settings.json. No permits to search for. Closing program.')
         quit(1)
     elif len(appSettings["permits"]) == 0:
@@ -86,10 +86,10 @@ def validate_app_settings():
     # TODO handle permit format
 
     # Handle Dates
-    if not "dates" in appSettings:
+    if "dates" not in appSettings:
         print('NOTICE: No "dates" field in settings.json. No time range to search in. Closing program.')
         quit(1)
-    elif not "start" in appSettings["dates"] or not "end" in appSettings["dates"]:
+    elif "start" not in appSettings["dates"] or "end" not in appSettings["dates"]:
         print('NOTICE: Must have "start" and "end" fields under "dates" in settings.json. No time range to search in. Closing program.')
         quit(1)
     # TODO handle date format ("MONTH YYYY")
@@ -126,7 +126,7 @@ def safe_check_for_permits():
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
             errorEmailBody = f"There was an error checking for permits at {timestamp}. The error message given is: {err}.\n\n"
             send_email("RECREATION BOT: Error checking for permits", errorEmailBody, True)
-        except:
+        except Exception as _:
             print("ERROR: Failed to send error email.")
             
         # Schedule another search for permits
@@ -180,7 +180,7 @@ def check_for_permits():
         segmentInput = None
         try:
             segmentInput = Select(driver.find_element(By.ID, "division-selection"))
-        except NoSuchElementException as err:
+        except NoSuchElementException:
             pass
 
 
@@ -189,7 +189,7 @@ def check_for_permits():
             print(f'PERMITS:\t\tSearching for "{name}" -> "{segment}" permits')
             
             # Select segment and set num people
-            if segmentInput != None:
+            if segmentInput is not None:
                 # Select segment
                 segmentInput.select_by_visible_text(segment)
 
@@ -202,13 +202,13 @@ def check_for_permits():
                         numPeopleInput.clear()
                         numPeopleInput.send_keys(permitToCheck["num-people"])
                         numPeopleInput.send_keys(Keys.RETURN)
-                except NoSuchElementException as err:
+                except NoSuchElementException:
                     pass
 
             permitAvail = get_availability(driver, startMonth, startYear, endMonth, endYear)
             
             # Init segment list if needed
-            if not "segments" in foundPermitAvail[permitID]:
+            if "segments" not in foundPermitAvail[permitID]:
                 foundPermitAvail[permitID]["segments"] = {}
 
             # Add segment avail to list
@@ -329,7 +329,7 @@ def compare_availability(foundPermitAvail):
         foundAvail = foundPermitAvail[permit["id"]]
 
         # First time finding permit
-        if not permit["id"] in permitAvail:
+        if permit["id"] not in permitAvail:
             continue
 
         oldAvail = permitAvail[permit["id"]]
@@ -339,14 +339,14 @@ def compare_availability(foundPermitAvail):
             for segment in foundAvail["segments"]:
 
                 # First time finding segment
-                if not segment in oldAvail["segments"]:
+                if segment not in oldAvail["segments"]:
                     continue
 
                 # Go over each month
                 for month in foundAvail["segments"][segment]:
 
                     # First time finding this month for this segment
-                    if not month in oldAvail["segments"][segment]:
+                    if month not in oldAvail["segments"][segment]:
                         continue
 
                     foundDaysAvail = foundAvail["segments"][segment][month]
@@ -358,15 +358,15 @@ def compare_availability(foundPermitAvail):
                     if len(newDaysAvail) > 0:
 
                         # Init permit if needed
-                        if not permit["id"] in newAvail:
+                        if permit["id"] not in newAvail:
                             newAvail[permit["id"]] = {}
 
                         # Init segments if needed
-                        if not "segments" in newAvail[permit["id"]]:
+                        if "segments" not in newAvail[permit["id"]]:
                             newAvail[permit["id"]]["segments"] = {}
 
                         # Init specific segment if needed
-                        if not segment in newAvail[permit["id"]]["segments"]:
+                        if segment not in newAvail[permit["id"]]["segments"]:
                             newAvail[permit["id"]]["segments"][segment] = {}
 
                         newAvail[permit["id"]]["segments"][segment][month] = newDaysAvail
@@ -378,7 +378,7 @@ def compare_availability(foundPermitAvail):
             for month in foundAvail["availability"]:
 
                 # First time finding this month for this permit
-                if not month in oldAvail["availability"]:
+                if month not in oldAvail["availability"]:
                     continue
 
                 foundDaysAvail = foundAvail["availability"][month]
@@ -390,11 +390,11 @@ def compare_availability(foundPermitAvail):
                 if len(newDaysAvail) > 0:
 
                     # Init permit if needed
-                    if not permit["id"] in newAvail:
+                    if permit["id"] not in newAvail:
                         newAvail[permit["id"]] = {}
 
                     # Init segments if needed
-                    if not "availability" in newAvail[permit["id"]]:
+                    if "availability" not in newAvail[permit["id"]]:
                         newAvail[permit["id"]]["availability"] = {}
 
                     newAvail[permit["id"]]["availability"][month] = newDaysAvail
@@ -472,7 +472,7 @@ def send_email(subject, body, isError = False):
         emailServer.close()
         print("NOTIF: Email sent")
     except Exception as err:
-        print("ERROR: Error sending email ({err})")
+        print(f"ERROR: Error sending email ({err})")
 
 if __name__ == "__main__":
     main()
