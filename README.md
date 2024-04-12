@@ -7,7 +7,6 @@
     - [1.1 Get Python](#11-get-python)
     - [1.2 Dependencies](#12-dependencies)
       - [1.2.1 Pipenv](#121-pipenv)
-      - [1.2.2 Chrome](#122-chrome)
   - [2. Running](#2-running)
     - [2.1 Settings](#21-settings)
     - [2.2 Running The Code](#22-running-the-code)
@@ -37,16 +36,12 @@ To install `pipenv`, run:
 python -m pip install pipenv
 ```
 
-#### 1.2.2 Chrome
-Make sure you have [Google Chrome](https://www.google.com/chrome/) installed as this app uses Selenium's Chrome web driver to access [recreation.gov](https://recreation.gov).
-
 ## 2. Running
 ### 2.1 Settings
 Settings are defined in [settings.json](settings.json). 
 Below is the default settings:
 ```JSON
 {
-    "show-browser":false,
     "emails": {
         "sendFrom": {
             "email": "recreation.permit.bot@gmail.com",
@@ -60,7 +55,6 @@ Below is the default settings:
     },
     "run-every": 60,
     "run-once": false,
-    "wait-for-load": 2,
     "permits": [{
         "id": "234622",
         "segments": [],
@@ -92,9 +86,6 @@ Below is the default settings:
 Below is the description of these settings. 
 **NOTE: the format of these fields is important and the program may not work if they are formatted improperly.**
 
-- `show-browser`
-  - If `true`, will open an instance of Google Chrome to run the web scraping. This may run a bit faster due to Chrome's security features.
-  - Values: `true` or `false`
 - `emails`
   - `sendFrom`
     - `email`
@@ -107,12 +98,12 @@ Below is the description of these settings.
 - `dates`
   - `start`
     - Beginning of date range to search from
-    - Format: `MONTH YYYY` (e.g. `March 2022`)
-      - This is case insensitive
+    - Format: `YYYY-MM-DD` (e.g. `2024-04-01`)
+      - This is strict
   - `end`
     - End of date range to search from
-    - Format: `MONTH YYYY` (e.g. `March 2022`)
-      - This is case insensitive
+    - Format: `YYYY-MM-DD` (e.g. `2024-04-01`)
+      - This is strict
 - `run-every`
   - Tells the program how often (in seconds) to check for permits.
   - Note that this is the delay between the end of one check and the start of the next.
@@ -120,12 +111,6 @@ Below is the description of these settings.
 - `run-once`
   - Values: `true` or `false`
   - If `true`, permits will be checked for once and not 
-- `wait-for-load`
-  - Format: `number` (e.g. `2`, `10`)
-  - Tells the web scraper how long to wait (in seconds) for an element to load.
-  - This handles the latency of waiting for the page to load in and find parts of the page.
-  - This will affect how fast the web scraper runs, but if it's too small it may give up on trying to find parts of the page. I've found that `2` (seconds) works well for my computer and internet connection.
-  - If there are errors in the program output related to something like "element not found", try increasing this value.
 - `permits`
   - The permits to search for.
   - `id`

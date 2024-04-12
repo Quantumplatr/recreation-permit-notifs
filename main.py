@@ -7,28 +7,30 @@ from selenium.common.exceptions import NoSuchElementException
 
 import json
 import time
+from datetime import datetime
 import sched
 import smtplib
+import requests
 
 
 schedule = None
-appSettings = None
-permitAvail = {}
+app_settings = None
+permit_avail = {}
+
 
 def main():
     """
     Gets information from files and begins scheduling permit checks.
     Runs a permit check immediately.
     """
-    global appSettings
+    global app_settings
     global schedule
-    global permitAvail
-
+    global permit_avail
 
     # Get settings
     try:
-        with open("settings.json", "r") as settingsFile:
-            appSettings = json.load(settingsFile)
+        with open("settings.json", "r") as settings_file:
+            app_settings = json.load(settings_file)
     except Exception as err:
         print(f"ERROR: Failed to load settings with error: {err}")
         print("NOTICE: Make sure that settings.json exists and is properly formatted.")
@@ -36,8 +38,8 @@ def main():
 
     # Get previous availability
     try:
-        with open("permitAvail.json", "r") as permitAvailFile:
-            permitAvail = json.load(permitAvailFile)
+        with open("permitAvail.json", "r") as permit_avail_file:
+            permit_avail = json.load(permit_avail_file)
     except Exception as err:
         print(f"ERROR: Failed to load previously found permits with error: {err}")
         print("NOTICE: Assuming no permits previously found.")
@@ -47,69 +49,79 @@ def main():
 
     schedule = sched.scheduler(time.time, time.sleep)
 
-    schedule_checking(True) # True to run immediately once
+    schedule_checking(True)  # True to run immediately once
     schedule.run()
+
 
 def validate_app_settings():
     """
     Validates that settings.json had the approriate information.
     """
-    global appSettings
-    
+    global app_settings
+
     # Default "show-browser" to False
-    if "show-browser" not in appSettings:
-        print('NOTICE: No "show-browser" field in settings.json. Using false as a default.')
-        appSettings["show-browser"] = False
+    if "show-browser" not in app_settings:
+        print(
+            'NOTICE: No "show-browser" field in settings.json. Using false as a default.'
+        )
+        app_settings["show-browser"] = False
 
     # Default "run-once" to False
-    if "run-once" not in appSettings:
+    if "run-once" not in app_settings:
         print('NOTICE: No "run-once" field in settings.json. Using true as a default.')
-        appSettings["run-once"] = False
+        app_settings["run-once"] = False
 
     # Default "run-every" to 15 minutes
-    if "run-every" not in appSettings:
-        print('NOTICE: No "run-every" field in settings.json. Using 15 (minutes) as a default.')
-        appSettings["run-every"] = 15 * 60
-
-    # Default "wait-for-load" to 2 seconds
-    if "wait-for-load" not in appSettings:
-        print('NOTICE: No "wait-for-load" field in settings.json. Using 2 (seconds) as a default.')
-        appSettings["wait-for-load"] = 2
+    if "run-every" not in app_settings:
+        print(
+            'NOTICE: No "run-every" field in settings.json. Using 15 (minutes) as a default.'
+        )
+        app_settings["run-every"] = 15 * 60
 
     # Handle no permits
-    if "permits" not in appSettings:
-        print('NOTICE: No "permits" field in settings.json. No permits to search for. Closing program.')
+    if "permits" not in app_settings:
+        print(
+            'NOTICE: No "permits" field in settings.json. No permits to search for. Closing program.'
+        )
         quit(1)
-    elif len(appSettings["permits"]) == 0:
-        print('NOTICE: Empty list of permits in settings.json. No permits to search for. Closing program.')
+    elif len(app_settings["permits"]) == 0:
+        print(
+            "NOTICE: Empty list of permits in settings.json. No permits to search for. Closing program."
+        )
         quit(1)
     # TODO handle permit format
 
     # Handle Dates
-    if "dates" not in appSettings:
-        print('NOTICE: No "dates" field in settings.json. No time range to search in. Closing program.')
+    if "dates" not in app_settings:
+        print(
+            'NOTICE: No "dates" field in settings.json. No time range to search in. Closing program.'
+        )
         quit(1)
-    elif "start" not in appSettings["dates"] or "end" not in appSettings["dates"]:
-        print('NOTICE: Must have "start" and "end" fields under "dates" in settings.json. No time range to search in. Closing program.')
+    elif "start" not in app_settings["dates"] or "end" not in app_settings["dates"]:
+        print(
+            'NOTICE: Must have "start" and "end" fields under "dates" in settings.json. No time range to search in. Closing program.'
+        )
         quit(1)
     # TODO handle date format ("MONTH YYYY")
 
     # TODO check emails
 
-def schedule_checking(runNow = False):
+
+def schedule_checking(runNow=False):
     """
     Schedules a task to check for permits.
     If the given parameter is true, the task is run immediately.
     Else, it is run in "run-every" seconds defined in settings.json.
     """
-    global appSettings
+    global app_settings
     global schedule
 
     try:
-        runIn = 0 if runNow else appSettings["run-every"]
+        runIn = 0 if runNow else app_settings["run-every"]
         schedule.enter(runIn, 1, safe_check_for_permits)
     except Exception as err:
         print(f"ERROR: Failed to schedule permit checking with error {err}")
+
 
 def safe_check_for_permits():
     """
@@ -120,231 +132,199 @@ def safe_check_for_permits():
         check_for_permits()
     except Exception as err:
         print(f"ERROR: Error checking for permits ({err})")
-        
+
         # Send email with error message
         try:
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
             errorEmailBody = f"There was an error checking for permits at {timestamp}. The error message given is: {err}.\n\n"
-            send_email("RECREATION BOT: Error checking for permits", errorEmailBody, True)
+            send_email(
+                "RECREATION BOT: Error checking for permits", errorEmailBody, True
+            )
         except Exception as _:
             print("ERROR: Failed to send error email.")
-            
+
         # Schedule another search for permits
-        if not appSettings['run-once']:
+        if not app_settings["run-once"]:
             schedule_checking()
+
+
+def get_details_from_api(permit_id) -> dict:
+    """
+    Accesses the Recreation.gov API to get permit details for the given permit ID.
+    Returns the details as a dictionary.
+    """
+
+    url = f"https://www.recreation.gov/api/permits/{permit_id}/details"
+    response = requests.get(
+        url,
+        params={},
+        headers={
+            # User Agent to make request work
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+        },
+    )
+
+    if response.status_code != 200:
+        print(f"ERROR: Failed to get details for permit {permit_id}.")
+        return None
+
+    return response.json()["payload"]
+
+
+def get_availability_from_api(permit_id, division_id) -> dict:
+    """
+    Accesses the Recreation.gov API to get permit availability for the given permit and division IDs.
+    """
+
+    global app_settings
+
+    # Get start and end dates
+    start_date = app_settings["dates"]["start"]
+    end_date = app_settings["dates"]["end"]
+
+    # Format dates
+    start_date = datetime.strptime(start_date, "%Y-%m-%d").isoformat()
+    end_date = datetime.strptime(end_date, "%Y-%m-%d").isoformat()
+
+    # Note that query params must be in UTC time ISO format (end in Z)
+    # Example: 2022-01-01T00:00:00Z
+    # This is done in the URL not in the params to avoid encoding issues
+    url = f"https://www.recreation.gov/api/permits/{permit_id}/divisions/{division_id}/availability?start_date={start_date}Z&end_date={end_date}Z"
+    response = requests.get(
+        url,
+        headers={
+            # User Agent to make request work
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0"
+        },
+    )
+
+    if response.status_code != 200:
+        print(
+            f"ERROR: Failed to get availability for permit {permit_id} and division {division_id}."
+        )
+        return None
+
+    return response.json()["payload"]
+
 
 def check_for_permits():
     """
-    Scrapes the appropriate recreation.gov sites to find permit availability.
+    Accesses the API to get permit availability.
     """
-    global appSettings
+    global app_settings
 
-    # Set browser options
-    options = Options()
-
-    if not appSettings["show-browser"]:
-        options.add_argument("--headless")
-
-    options.add_argument("--window-size=1920x1080")
-
-    # Open Browser
-    driver = webdriver.Chrome(options=options)
-    driver.implicitly_wait(appSettings["wait-for-load"])
-
-    permitsToCheck = appSettings["permits"]
-    foundPermitAvail = {}
-
-    startMonth, startYear = appSettings["dates"]["start"].lower().split(" ")
-    endMonth, endYear = appSettings["dates"]["end"].lower().split(" ")
-
-    # Print that the search is starting with a timestamp
-    print(f"\n\n----- {time.strftime('%Y-%m-%d %H:%M:%S')}: STARTING SEARCH FOR PERMIT AVAILABILITY -----")
+    permits_to_check = app_settings["permits"]
+    found_permit_avail = {}
 
     # Check all permits
-    for permitToCheck in permitsToCheck:
+    for permit in permits_to_check:
+        permit_id = permit["id"]
 
-        permitID = permitToCheck["id"]
+        details = get_details_from_api(permit_id)
 
-        url = f"https://www.recreation.gov/permits/{permitID}"
-        driver.get(url)
-        foundPermitAvail[permitID] = {
-            "url": url
+        # Set up permit in found permit availability
+        found_permit_avail[permit_id] = {
+            "name": details["name"],
+            "url": f"https://www.recreation.gov/permits/{permit_id}",
         }
 
-        # Get permit name
-        name = driver.find_element(By.XPATH, '//*[@id="page-content"]/div/div[2]/div/div/div[1]/div[1]/h1').text
-        foundPermitAvail[permitID]["name"] = name
-        print(f'PERMITS:\tSearching for "{name}" permits')
+        # If details are not found, skip this permit
+        if details is None:
+            continue
 
-        # Check for segment input
-        segmentInput = None
-        try:
-            segmentInput = Select(driver.find_element(By.ID, "division-selection"))
-        except NoSuchElementException:
-            pass
+        # TODO:  report error / send email?
 
+        # Get divisions to check
+        # If no segments, get first division
+        # If segments, get all divisions
+        divisions = {}
+        if "segments" in permit and len(permit["segments"]) > 0:
+            division_names = permit["segments"]
 
-        # Select 
-        for segment in permitToCheck["segments"]:
-            print(f'PERMITS:\t\tSearching for "{name}" -> "{segment}" permits')
-            
-            # Select segment and set num people
-            if segmentInput is not None:
-                # Select segment
-                segmentInput.select_by_visible_text(segment)
+            # Get division ids from details
+            for division_id, division in details["divisions"].items():
+                if division["name"] in division_names:
+                    divisions[division_id] = division["name"]
 
-                # Input people
-                numPeopleInput = None
-                try:
-                    numPeopleInput = driver.find_element(By.ID, "number-input-")
-                    # Ensure that the input has the right number of people
-                    while not numPeopleInput.get_attribute('value') == str(permitToCheck["num-people"]):
-                        numPeopleInput.clear()
-                        numPeopleInput.send_keys(permitToCheck["num-people"])
-                        numPeopleInput.send_keys(Keys.RETURN)
-                except NoSuchElementException:
-                    pass
+        else:
+            divisions[next(iter(details["divisions"]))] = None
 
-            permitAvail = get_availability(driver, startMonth, startYear, endMonth, endYear)
-            
-            # Init segment list if needed
-            if "segments" not in foundPermitAvail[permitID]:
-                foundPermitAvail[permitID]["segments"] = {}
+        # Get availability for each division
+        for division_id, division_name in divisions.items():
+            avail_data = get_availability_from_api(permit_id, division_id)
 
-            # Add segment avail to list
-            foundPermitAvail[permitID]["segments"][segment] = permitAvail
+            # If availability is not found, skip this division
+            if avail_data is None:
+                continue
 
-            print(f'PERMITS:\t\tDone searching for "{name}" -> "{segment}" permits')
+            # TODO: report error / send email?
 
-        # Add permit avail
-        if len(permitToCheck["segments"]) == 0:
-            permitAvail = get_availability(driver, startMonth, startYear, endMonth, endYear)
+            # Set up segment in found permit availability
+            if division_name is None:
+                found_permit_avail[permit_id]["availability"] = {}
+            else:
+                if "segments" not in found_permit_avail[permit_id]:
+                    found_permit_avail[permit_id]["segments"] = {}
+                
+                found_permit_avail[permit_id]["segments"][division_name] = {}
 
-            foundPermitAvail[permitID]["availability"] = permitAvail
-            
-        print(f'PERMITS:\tDone searching for "{name}" permits')
-
-    compare_availability(foundPermitAvail)
-
-    # Schedule another search for permits
-    if not appSettings['run-once']:
+            # Iterate over days to check for availability
+            for day, avail_info in avail_data["date_availability"].items():
+                if avail_info["remaining"] > 0:
+                    # Get date in format "MONTH YEAR" from ISO date
+                    date = datetime.strptime(day, "%Y-%m-%dT%H:%M:%S%z")
+                    
+                    day = int(date.strftime("%d"))
+                    month_year = date.strftime("%B %Y")
+                    
+                    # Add day to availability
+                    if division_name is None:
+                        if month_year not in found_permit_avail[permit_id]["availability"]:
+                            found_permit_avail[permit_id]["availability"][month_year] = []
+                        
+                        found_permit_avail[permit_id]["availability"][month_year].append(day)
+                    else:
+                        if month_year not in found_permit_avail[permit_id]["segments"][division_name]:
+                            found_permit_avail[permit_id]["segments"][division_name][month_year] = []
+                            
+                        found_permit_avail[permit_id]["segments"][division_name][month_year].append(day)
+    
+    compare_availability(found_permit_avail)
+    
+    if not app_settings["run-once"]:
         schedule_checking()
 
 
-def get_availability(driver, startMonth, startYear, endMonth, endYear):
-    """
-    Gets the availability off of the current page and returns in.
-    This changes the selected month to the starting one and then traverses to the end month.
-    """
-
-    selectedMonthElem = driver.find_element(By.XPATH, '//*[@id="page-content"]/div/div[2]/div/div/div[2]/div[1]/div/div[2]/div/div/div/div[1]/div[2]/div[2]/div/div[2]/div/div/strong')
-    selectedMonth, selectedYear = selectedMonthElem.text.lower().split(" ")
-    
-    months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
-
-    goPrevMonth = driver.find_element(By.XPATH, '//*[@id="page-content"]/div/div[2]/div/div/div[2]/div[1]/div/div[2]/div/div/div/div[1]/div[2]/div[1]/div[1]/div')
-    goNextMonth = driver.find_element(By.XPATH, '//*[@id="page-content"]/div/div[2]/div/div/div[2]/div[1]/div/div[2]/div/div/div/div[1]/div[2]/div[1]/div[2]/div')
-
-    availability = {}
-
-    # Go to the right year
-    while selectedYear != startYear:
-
-        # Navigate
-        if selectedYear > startYear:
-            goPrevMonth.click()
-        else:
-            goNextMonth.click()
-        
-        # Get new month
-        selectedMonthElem = driver.find_element(By.XPATH, '//*[@id="page-content"]/div/div[2]/div/div/div[2]/div[1]/div/div[2]/div/div/div/div[1]/div[2]/div[2]/div/div[2]/div/div/strong')
-        selectedMonthElemText = selectedMonthElem.text.lower()
-        while selectedMonthElemText == "":
-            selectedMonthElem = driver.find_element(By.XPATH, '//*[@id="page-content"]/div/div[2]/div/div/div[2]/div[1]/div/div[2]/div/div/div/div[1]/div[2]/div[2]/div/div[2]/div/div/strong')
-            selectedMonthElemText = selectedMonthElem.text.lower()
-            time.sleep(0.1)
-
-        selectedMonth, selectedYear = selectedMonthElemText.split(" ")
-
-    # Go to the right month
-    while months.index(selectedMonth) != months.index(startMonth):
-        
-        # Navigate
-        if months.index(selectedMonth) > months.index(startMonth):
-            goPrevMonth.click()
-        else:
-            goNextMonth.click()
-        
-        # Get new month
-        selectedMonthElem = driver.find_element(By.XPATH, '//*[@id="page-content"]/div/div[2]/div/div/div[2]/div[1]/div/div[2]/div/div/div/div[1]/div[2]/div[2]/div/div[2]/div/div/strong')
-        selectedMonthElemText = selectedMonthElem.text.lower()
-        while selectedMonthElemText == "":
-            selectedMonthElem = driver.find_element(By.XPATH, '//*[@id="page-content"]/div/div[2]/div/div/div[2]/div[1]/div/div[2]/div/div/div/div[1]/div[2]/div[2]/div/div[2]/div/div/strong')
-            selectedMonthElemText = selectedMonthElem.text.lower()
-            time.sleep(0.1)
-
-        selectedMonth, selectedYear = selectedMonthElemText.split(" ")
-
-    #  Go through months
-    while selectedYear <= endYear:
-        while months.index(selectedMonth) <= months.index(endMonth):
-
-            # Get availability
-            availableDays = driver.find_elements(By.CLASS_NAME, "rec-available-day")
-            dayNums = []
-            for availableDay in availableDays:
-                # Get day text and add to list
-                dayNum = availableDay.find_element(By.XPATH, "div[1]").text
-                if dayNum != "":
-                    dayNums.append(int(dayNum)) 
-            availability[f"{selectedMonth.capitalize()} {selectedYear}"] = dayNums
-
-            # Go to next month
-            goNextMonth.click()
-            time.sleep(1)
-
-            # Get new month year
-            selectedMonthElem = driver.find_element(By.XPATH, '//*[@id="page-content"]/div/div[2]/div/div/div[2]/div[1]/div/div[2]/div/div/div/div[1]/div[2]/div[2]/div/div[2]/div/div/strong')
-            selectedMonth, selectedYear = selectedMonthElem.text.lower().split(" ")
-        
-        # Done
-        if selectedYear == endYear:
-            break
-
-    return availability
-
-def compare_availability(foundPermitAvail):
+def compare_availability(found_permit_avail):
     """
     Compares given permit availability with previously found permit
     availability. If there is new availability, a notification email
     is sent.
     """
-    global permitAvail
-    global appSettings
+    global permit_avail
+    global app_settings
 
     newAvail = {}
 
     # Compare all permits
-    for permit in appSettings["permits"]:
-        foundAvail = foundPermitAvail[permit["id"]]
+    for permit in app_settings["permits"]:
+        foundAvail = found_permit_avail[permit["id"]]
 
         # First time finding permit
-        if permit["id"] not in permitAvail:
+        if permit["id"] not in permit_avail:
             continue
 
-        oldAvail = permitAvail[permit["id"]]
+        oldAvail = permit_avail[permit["id"]]
 
         # Compare segmented permit avail
         if "segments" in foundAvail:
             for segment in foundAvail["segments"]:
-
                 # First time finding segment
                 if segment not in oldAvail["segments"]:
                     continue
 
                 # Go over each month
                 for month in foundAvail["segments"][segment]:
-
                     # First time finding this month for this segment
                     if month not in oldAvail["segments"][segment]:
                         continue
@@ -356,7 +336,6 @@ def compare_availability(foundPermitAvail):
 
                     # Store new availability
                     if len(newDaysAvail) > 0:
-
                         # Init permit if needed
                         if permit["id"] not in newAvail:
                             newAvail[permit["id"]] = {}
@@ -369,14 +348,15 @@ def compare_availability(foundPermitAvail):
                         if segment not in newAvail[permit["id"]]["segments"]:
                             newAvail[permit["id"]]["segments"][segment] = {}
 
-                        newAvail[permit["id"]]["segments"][segment][month] = newDaysAvail
+                        newAvail[permit["id"]]["segments"][segment][month] = (
+                            newDaysAvail
+                        )
                         newAvail[permit["id"]]["name"] = foundAvail["name"]
                         newAvail[permit["id"]]["url"] = foundAvail["url"]
 
         # Compare permit avail
         else:
             for month in foundAvail["availability"]:
-
                 # First time finding this month for this permit
                 if month not in oldAvail["availability"]:
                     continue
@@ -385,10 +365,9 @@ def compare_availability(foundPermitAvail):
                 oldDaysAvail = oldAvail["availability"][month]
 
                 newDaysAvail = list(set(foundDaysAvail) - set(oldDaysAvail))
-                
+
                 # Store new availability
                 if len(newDaysAvail) > 0:
-
                     # Init permit if needed
                     if permit["id"] not in newAvail:
                         newAvail[permit["id"]] = {}
@@ -406,15 +385,15 @@ def compare_availability(foundPermitAvail):
         notify_of_permits(newAvail)
 
     # Update
-    permitAvail = foundPermitAvail
+    permit_avail = found_permit_avail
     with open("permitAvail.json", "w") as permitAvailFile:
-        json.dump(permitAvail, permitAvailFile)
+        json.dump(permit_avail, permitAvailFile)
         print("FILES: Updated permitAvail.json")
-        
+
 
 def notify_of_permits(newAvail):
     """Sends an email notifying of the new availabilities given in the parameter."""
-    global appSettings
+    global app_settings
 
     print(f"IMPORTANT: New availability found!!!! {newAvail}")
 
@@ -429,35 +408,34 @@ def notify_of_permits(newAvail):
             for segment in newAvail[permitID]["segments"]:
                 emailBody += f"\t{segment}\n"
 
-                for month in newAvail[permitID]["segments"][segment]:    
+                for month in newAvail[permitID]["segments"][segment]:
                     newDays = newAvail[permitID]["segments"][segment][month]
                     emailBody += f"\t\t{month}\n\t\t\t{newDays}\n"
 
         else:
             for month in newAvail[permitID]["availability"]:
-                
                 newDays = newAvail[permitID]["availability"][month]
                 emailBody += f"\t{month}\n\t\t{newDays}\n"
 
-
     # Send email
-    send_email("RECREATION BOT: New permit availability found", emailBody)
+    today = datetime.now()
+    send_email(f"RECREATION BOT: New permit availability found as of {today.isoformat()}", emailBody)
 
 
 # Send an email with the given subject and body.
 # The email is sent to/from the email(s) specified in the appSettings.
-def send_email(subject, body, isError = False):
+def send_email(subject, body, isError=False):
     """Sends an email with the given message."""
-    global appSettings
+    global app_settings
 
     # Get emails
-    fromEmail = appSettings["emails"]["sendFrom"]["email"]
-    fromPass = appSettings["emails"]["sendFrom"]["appPass"]
-    sendTo = appSettings["emails"]["sendTo"]
+    fromEmail = app_settings["emails"]["sendFrom"]["email"]
+    fromPass = app_settings["emails"]["sendFrom"]["appPass"]
+    sendTo = app_settings["emails"]["sendTo"]
 
     if isError:
-        sendTo = appSettings["emails"]["sendErrorsTo"]
-    
+        sendTo = app_settings["emails"]["sendErrorsTo"]
+
     # Format email message
     emailText = f"From: {fromEmail}\r\n"
     emailText += f"To: {', '.join(sendTo)}\r\n"
@@ -465,7 +443,7 @@ def send_email(subject, body, isError = False):
     emailText += f"{body}"
 
     try:
-        emailServer = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        emailServer = smtplib.SMTP_SSL("smtp.gmail.com", 465)
         emailServer.ehlo()
         emailServer.login(fromEmail, fromPass)
         emailServer.sendmail(fromEmail, sendTo, emailText)
@@ -473,6 +451,7 @@ def send_email(subject, body, isError = False):
         print("NOTIF: Email sent")
     except Exception as err:
         print(f"ERROR: Error sending email ({err})")
+
 
 if __name__ == "__main__":
     main()
