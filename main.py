@@ -59,13 +59,6 @@ def validate_app_settings():
     """
     global app_settings
 
-    # Default "show-browser" to False
-    if "show-browser" not in app_settings:
-        print(
-            'NOTICE: No "show-browser" field in settings.json. Using false as a default.'
-        )
-        app_settings["show-browser"] = False
-
     # Default "run-once" to False
     if "run-once" not in app_settings:
         print('NOTICE: No "run-once" field in settings.json. Using true as a default.')
